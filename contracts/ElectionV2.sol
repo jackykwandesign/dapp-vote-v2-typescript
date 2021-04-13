@@ -17,55 +17,48 @@ contract ElectionV2 {
         string name;
     }
 
+    struct VoteTicket {
+        uint id;
+        string encryptedBallot;
+        string signature;
+    }
+
     struct Vote {
         uint id;
         string name;
-        uint totalVotes;
         string organizerName;
         address organizerAddress;
         string publicKey;
-        // VoteOptions[] voteOptions;
+        string privateKey;
+
         uint voteOptionCount;
         mapping(uint => VoteOption) voteOptions;
-        // VoteOption[] voteOptions;
+        mapping(uint => uint) voteResults;
+
+        uint totalVoteCount;
+        mapping(uint => VoteTicket) voteTickets;
     }
 
-    // // Store voteCounts count
-    uint public voteCounts;
+    // // Store contractVoteCounts count
+    uint public contractVoteCounts;
 
-    mapping(uint => Vote) public votes;
+    mapping(uint => Vote) public contractVotes;
 
-    mapping(address => uint[]) public myVotes;  
-    // // Model a Candidate
-    // struct Candidate{
-    //     uint id;
-    //     string name;
-    //     uint voteCount;
-    // }
-
-    // // Store accounts that voted
-    // mapping(address => bool) public voters;
-
-    // // Store candidate
-    // // Fetch candidate
-    // mapping(uint => Candidate) public candidates;
-
-    // // Store Candidate count
-    // uint public candidatesCount;
+    mapping(address => uint[]) public myOrganizedVotes;  
 
     function addVote (string memory _name, string memory _organizerName, string memory _publicKey,string[] memory _options) public{
 
         require(_options.length > 0 && _options.length <= 20,"Vote options must more than 0 and less or equal than 20");
-        voteCounts++;
-        Vote storage v = votes[voteCounts];
-        v.id = voteCounts;
+        contractVoteCounts++;
+        Vote storage v = contractVotes[contractVoteCounts];
+        v.id = contractVoteCounts;
         v.name = _name;
         v.organizerAddress = msg.sender;
         v.organizerName = _organizerName;
         v.publicKey = _publicKey;
-        v.totalVotes = 0;
+        v.totalVoteCount = 0;
         v.voteOptionCount = 0;
-        myVotes[msg.sender].push(v.id);
+        myOrganizedVotes[msg.sender].push(v.id);
 
         v.voteOptionCount = _options.length;
         for(uint i = 1; i <= v.voteOptionCount; i++){
@@ -75,12 +68,55 @@ contract ElectionV2 {
         }
     }
 
-    function getMyVotes() external view returns(uint[] memory) {
-        return myVotes[msg.sender];
+    function getMyOrganizedVotes() external view returns(uint[] memory) {
+        return myOrganizedVotes[msg.sender];
     }
 
-    function getVoteOptionOfVote(uint voteID, uint optionID) public view returns(string memory name) {
-        return votes[voteID].voteOptions[optionID].name;
+    function getVoteOptionsByVoteID(uint voteID) public view returns(VoteOption[] memory) {
+        require(voteID > 0 && voteID <= contractVoteCounts, "voteID must less than contractVoteCounts");
+        Vote storage v = contractVotes[voteID];
+        VoteOption [] memory voteOptions = new VoteOption[](v.voteOptionCount);
+        for(uint i = 1; i <= v.voteOptionCount; i++){
+            voteOptions[i - 1].id = v.voteOptions[i].id;
+            voteOptions[i - 1].name = v.voteOptions[i].name;
+        }
+        return voteOptions;
+        // v.voteOptions
+        // return contractVotes[voteID].voteOptions[optionID].name;
+    }
+
+    function getVoteTicketsByVoteID(uint voteID) public view returns(VoteTicket[] memory) {
+        require(voteID > 0 && voteID <= contractVoteCounts, "voteID must less than contractVoteCounts");
+        Vote storage v = contractVotes[voteID];
+        VoteTicket [] memory tickets = new VoteTicket[](v.totalVoteCount);
+        for(uint i = 1; i <= v.totalVoteCount; i++){
+            tickets[i - 1].id = v.voteTickets[i].id;
+            tickets[i - 1].encryptedBallot = v.voteTickets[i].encryptedBallot;
+            tickets[i - 1].signature = v.voteTickets[i].signature;
+        }
+        return tickets;
+        // v.voteOptions
+        // return contractVotes[voteID].voteOptions[optionID].name;
+    }
+
+    // function getVoteTicketOfVote(uint voteID, uint ticketID) public view returns(VoteTicket memory ticket) {
+    //     require(voteID > 0 && voteID <= contractVoteCounts, "voteID must less than contractVoteCounts");
+    //     Vote storage v = contractVotes[voteID];
+    //     require(v.totalVoteCount > 0 && ticketID <= v.totalVoteCount, "ticketID must less than totalVoteCount");
+    //     VoteTicket memory vt = v.voteTickets[ticketID];
+    //     // return (vt.id, vt.encryptedBallot, vt.signature);
+    //     return vt;
+    // }
+
+    function caseVoteByVoteID(uint voteID, string memory _encryptedBallot, string memory _signature) public{
+        require(voteID > 0 && voteID <= contractVoteCounts, "voteID must less than contractVoteCounts");
+        contractVotes[voteID].totalVoteCount++;
+        VoteTicket storage vt = contractVotes[voteID].voteTickets[contractVotes[voteID].totalVoteCount];
+        vt.id = contractVotes[voteID].totalVoteCount;
+        vt.encryptedBallot = _encryptedBallot;
+        vt.signature = _signature;
+
+        // contractVotes[voteID]
     }
     // function addVoteOption(uint voteID, string memory _name) public{
     //             // check if voted, reject if voted
