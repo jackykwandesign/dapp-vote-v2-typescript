@@ -4,12 +4,10 @@ const NodeRSA = require('node-rsa');
 const key = new NodeRSA({b: 512});
 const publicPem = key.exportKey('public');
 const privatePem = key.exportKey('private');
-// console.log("publicPem", publicPem)
-// console.log("privatePem", privatePem)
-// let publicKey = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCJvIlCBbeCn97THoiM2UVCl2ACsIhPdkEojqptGH22Kn663y+9LD/4KsqgR34FA8WCl6s4mHzzxLbOpDC7/dqvyjdorSg6zTkmq9CaSMUiRezQDLDYrvbeEh6xcqfx/xu1+/AM7XR6hj1UQQHIe1gs9DjjNli5UNnQjKiMPYFOrwIDAQAB"
-// let privateKey = "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAIm8iUIFt4Kf3tMeiIzZRUKXYAKwiE92QSiOqm0YfbYqfrrfL70sP/gqyqBHfgUDxYKXqziYfPPEts6kMLv92q/KN2itKDrNOSar0JpIxSJF7NAMsNiu9t4SHrFyp/H/G7X78AztdHqGPVRBAch7WCz0OOM2WLlQ2dCMqIw9gU6vAgMBAAECgYBWnzuzSeUfQWvhWlKGQh5Mwuaeymbvkm9oElEcS0rERfVtkO91CV8xs7e7FTsr7DNK7hfAgCYVKKHPU3NSx1PASMNg6jUIIPo/Zp+HSkAHQoW6RTcg/NWHJRrB1rXCjD22sQ8RfnV/uHrRNRLUTDqoOFul4VarjZlJxqn9j/TAAQJBAOjHrv2LfrfKd5OCsLp+5LVFQdaEagQY2Dy3ghZRP0OWgV4ATNOrlJAYzhkD3qppOMElhXCLDF68bJxU6gnyLiECQQCXec1HU609K01/3SFYkHeWI5mr7cj6beYQ0d/yptbk3D5DqitYjHy7WCQR55gh7waQ3YOOLDRF9eQjSN/amcLPAkBRU9qmiMMYEWvfpKx8K/NaBb1v5kln7wo1hGO1ymMRCRdfsTkmRu8bvR7cjIaSATsr+CD75gjHXIuRvvUZznwhAkAqdf9AJkmiovfXhuIpFF4hXRtfoYk8AgCC6IIRYAlPIBnoF9SMvtzcG0oJJtVzdbBufVm6SdPhZJst9OijO4TrAkEAh2egifdGN28u8FRscA90fpjGYh8Tx5Iksx+ER78JmhdvZStaywAQ5KbIYvSym3n3tRsN0lXbahxZ0pA2qB7iEg=="
 
 contract("ElectionV2", (accounts) =>{
+    let organizerAddress = accounts[1]
+
     it("init with 0 votes", async () =>{
         const electionV2Instance = await ElectionV2.deployed();
         const count = await electionV2Instance.contractVoteCounts()
@@ -18,12 +16,19 @@ contract("ElectionV2", (accounts) =>{
 
     it("add 1 vote", async() =>{
         const electionV2Instance = await ElectionV2.deployed();
+        
         let voteName = "test vote 1"
         let organizerName = "HK voting organizer"
- 
-        let organizerAddress = accounts[1]
         let dummyVoteOptions = ['apple','banana','watermelon'];
         let voteCounts = dummyVoteOptions.length
+
+        try {
+            const receipt2 = await electionV2Instance.addVote(voteName,organizerName,publicPem, [], {from:organizerAddress})
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+        }
+        
+
         const receipt = await electionV2Instance.addVote(voteName,organizerName,publicPem, dummyVoteOptions, {from:organizerAddress})
         const count = await electionV2Instance.contractVoteCounts()
         assert.equal(count.toNumber(),1, `count = ${count}, not add 1 new Vote`)
@@ -39,7 +44,7 @@ contract("ElectionV2", (accounts) =>{
         assert.equal(vote[6].toNumber(),voteCounts, `voteOptionCount not equal to ${voteCounts}`)
         
         assert.equal(vote[7].toNumber(),0, `total vote count not equal to ${0}`)
-
+        assert.equal(vote[8],false, `vote end not equal to false`)
         // check if exist in myVotes
         const myVotes = await electionV2Instance.getMyOrganizedVotes({from:organizerAddress});
         assert.equal(myVotes.length, 1, "not found 1 vote i myVotes")
@@ -93,6 +98,97 @@ contract("ElectionV2", (accounts) =>{
         let decryptOption = keyProvideByOrganizer.decrypt(voteTickets[0].encryptedBallot,'json')
         assert.equal(decryptOption, ballot, `decrypt vote ticket not equal to ballot ${ballot} `)
     })
+
+    it("end a vote by voteID", async() =>{
+        const electionV2Instance = await ElectionV2.deployed();
+        let existVoteID = 1;
+        let notExistVoteID = 2;
+
+        try {
+            await electionV2Instance.endVoteByVoteID(notExistVoteID,"",[])
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+            assert.equal(error.reason,"voteID must less than contractVoteCounts", `detect wrong error reason ${error.reason}`)
+        }
+
+        try {
+            await electionV2Instance.endVoteByVoteID(existVoteID,"",[],{from:accounts[9]})
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+            assert.equal(error.reason,"Only Organizer can end the vote", `detect wrong error reason ${error.reason}`)
+        }
+
+        try {
+            await electionV2Instance.endVoteByVoteID(existVoteID,"",[],{from:organizerAddress})
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+            assert.equal(error.reason,"You must upload tickets count of all options", `detect wrong error reason ${error.reason}`)
+        }
+        
+        const voteBefore = await electionV2Instance.contractVotes(existVoteID)
+        const publicKeyInContract = voteBefore[4]
+        let voteOptionMax = voteBefore[6].toNumber()
+
+        // add more votes
+        // allow number, numStr
+        let ballots = [1,2,1,1,2,3,1,,'2',0, (voteOptionMax + 1),"asdasd"]
+        for(let i = 0; i < ballots.length; i++){
+            const pKey = new NodeRSA();
+            pKey.importKey(publicKeyInContract, 'public');
+            if(ballots[i] !== null && ballots[i] !== undefined){
+                let encryptedBallot = pKey.encrypt(ballots[i],'base64')
+                await electionV2Instance.caseVoteByVoteID(existVoteID,encryptedBallot, "")
+            }
+        }
+
+        const vote = await electionV2Instance.contractVotes(existVoteID)
+        const voteTickets = await electionV2Instance.getVoteTicketsByVoteID(existVoteID)
+        const keyProvideByOrganizer = new NodeRSA();
+        keyProvideByOrganizer.importKey(privatePem,'private')
+        let ticketCount = new Array(vote[6].toNumber()).fill(0);
+        voteTickets.map(t=>{
+            try {
+                let ballot = keyProvideByOrganizer.decrypt(t.encryptedBallot,'json')
+                if(ballot > 0 && ballot <= voteOptionMax){
+                    ticketCount[ballot - 1] ++;
+                    // console.log("ballot",ballot)
+                }
+            } catch (error) {
+                
+            }
+        })
+        // console.log("final ticketCount",ticketCount)
+
+        let totalSuccessVote = 0
+        ticketCount.map(t=>totalSuccessVote+= t)
+        assert.equal(totalSuccessVote, 9, `success total votes not equal to 9`)
+        // console.log("totalSuccessVote",totalSuccessVote)
+
+        // end the vote
+        await electionV2Instance.endVoteByVoteID(existVoteID,privatePem,ticketCount,{from:organizerAddress})
+
+        // try case vote after vote end
+        try {
+            await electionV2Instance.caseVoteByVoteID(existVoteID,"asdasd", "")
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+            assert.equal(error.reason,"Vote is end", `detect wrong error reason ${error.reason}`)
+        }
+
+        try {
+            const result = await electionV2Instance.getVoteResultsByVoteID(999)
+        } catch (error) {
+            assert(error.message.indexOf('revert') >= 0, "error message must contain revert")
+        }
+
+        const results = await electionV2Instance.getVoteResultsByVoteID(existVoteID)
+        let totalSuccessVoteInBlockChain = 0
+        results.map(t=>totalSuccessVoteInBlockChain+= t.toNumber())
+        assert.equal(results.length, ticketCount.length, "result length in blockchain not equal in local")
+        assert.equal(totalSuccessVote, totalSuccessVoteInBlockChain, `totalSuccessVote in blochain not equal in local`)
+        // console.log("results",results)
+    })
+
 
 
 })
